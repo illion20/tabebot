@@ -159,17 +159,17 @@ class TabelogSpider(CrawlSpider):
 
     rules = [
         # Follow business list pagination
-        Rule(LxmlLinkExtractor(allow=(r'[a-z]+/rstLst/RC\d+/\d+/\?.*',),
+        Rule(LxmlLinkExtractor(allow=(r'.com/[a-z]+/rstLst/RC\d+/\d+/\?.*',),
                                deny=(r's.tabelog.com')),
              follow=True),
 
         # Extract business
-        Rule(LxmlLinkExtractor(allow=(r'[a-z]+/A\d{4}/A\d{6}/\d+/$',),
+        Rule(LxmlLinkExtractor(allow=(r'.com/[a-z]+/A\d{4}/A\d{6}/\d+/$',),
                                deny=(r's.tabelog.com')),
              callback='parse_business'),
 
         # Follow review list pagination (first page)
-        Rule(LxmlLinkExtractor(allow=(r'[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/$',),
+        Rule(LxmlLinkExtractor(allow=(r'.com/[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/$',),
                                deny=(r's.tabelog.com')),
              follow=True),
 
@@ -182,32 +182,32 @@ class TabelogSpider(CrawlSpider):
         # smp2 全文
 
         # Follow review list pagination and extract reviews
-        Rule(LxmlLinkExtractor(allow=(r'[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/COND-0/smp2/\?.+',),
+        Rule(LxmlLinkExtractor(allow=(r'.com/[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/COND-0/smp1/\?.+',),
                                deny=(r'favorite_rvwr', r's.tabelog.com')),
              follow=True, callback='parse_reviews_and_users'),
     ]
 
     def is_tabelog(self, response):
         selector = Selector(response)
-        return bool(selector.xpath("//img[@id='tabelogo']"))
+        return bool(selector.xpath("//a[@class='p-header__logo-img']/text()"))
 
     def parse_reviews_and_users(self, response):
         if not self.is_tabelog(response):
             return Request(url=response.url, dont_filter=True)
-
+        
         dom = PyQuery(response.body)
         review_nodes = dom('div.rvw-item')
         business_id = int(re.findall(r'[a-z]+/A\d{4}/A\d{6}/(\d+)/dtlrvwlst/', response.url)[0])
-
+        
         reviews_and_users = []
         for review_node in review_nodes:
             user_id = self._extract_user_id(review_node)
             review = self._generate_review(review_node, business_id, user_id)
             if review:
                 reviews_and_users.append(review)
-            user = self._generate_user(review_node, user_id)
-            if user:
-                reviews_and_users.append(user)
+            #user = self._generate_user(review_node, user_id)
+            #if user:
+            #    reviews_and_users.append(user)
         return reviews_and_users
 
     def _extract_user_id(self, review_node):
@@ -219,37 +219,45 @@ class TabelogSpider(CrawlSpider):
     def _generate_review(self, review_node, business_id, user_id):
         review = ReviewItem()
 
-        review['review_id'] = int(review_node.getchildren()[0].attrib['name'])
+        review['review_id'] = int(re.findall(r'[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/B(\d+)', review_node.attrib['data-detail-url'])[0])
         review['business_id'] = business_id
         set_value_if_true(review, 'user_id', user_id)
 
-        review['visit'] = review_node.cssselect('.rvw-item__visit-month-num')[0].text
+        visits = review_node.cssselect('.rvw-item__visit-count-num')
+        if visits:
+            review['visit'] = visits[0].text
         review['text'] = [sentence for sentence in review_node.cssselect('div.rvw-item__rvw-comment > p')[0].itertext()]
-        review['title'] = review_node.cssselect('p.rvw-item__rvw-title')[0].text_content().strip()
+        title = review_node.cssselect('a.rvw-item__title-target')
+        if title:
+            review['title'] = title[0].text_content().strip()
 
         for meal in ['dinner', 'lunch']:
-            css = 'span.rvw-item__usedprice-icon--{0}'.format(meal)
-            review['price_{0}'.format(meal)] = review_node.cssselect(css)[0] \
-                                                          .getnext().text_content()
+            css = 'dd.rvw-item__usedprice-data > span.c-rating__time--{0}'.format(meal)
+            price = review_node.cssselect(css)
+            if price:
+                review['price_{0}'.format(meal)] = price[0].getnext().text_content()
 
             set_value_if_true(review, 'stars_{0}'.format(meal),
                               self._extract_stars(review_node, meal))
-        review['situations'] = self._extract_situations(review_node)
+        #review['situations'] = self._extract_situations(review_node)
         return review
 
     def _extract_stars(self, review_node, meal):
-        lis = review_node.cssselect('li.rvw-item__ratings-item--{0}'.format(meal))
-        if not lis:
+        ratings = review_node.cssselect('li.rvw-item__ratings-item')
+        if not ratings:
             return
-
         stars = {}
-        li = lis[0]
-        stars['total'] = convert_to_float_if_float(li.cssselect('strong.rvw-item__ratings-total-score')[0].text)
+        for rating in ratings:
+            span = rating.cssselect('span.c-rating__time--{0}'.format(meal))
+            if not span:
+                continue
 
-        lis = li.cssselect('ul.rvw-item__ratings-dtlscore > li')
-        for li, criterion in zip(lis, ['taste', 'service', 'ambience', 'cp', 'drink']):
-            score = li.cssselect('strong.rvw-item__ratings-dtlscore-score')[0].text
-            stars[criterion] = convert_to_float_if_float(score)
+            stars['total'] = convert_to_float_if_float(rating.cssselect('b.c-rating__val')[0].text)
+
+            lis = rating.cssselect('ul.rvw-item__ratings-dtlscore > li')
+            for li, criterion in zip(lis, ['taste', 'service', 'ambience', 'cp', 'drink']):
+                score = li.cssselect('strong.rvw-item__ratings-dtlscore-score')[0].text
+                stars[criterion] = convert_to_float_if_float(score)
 
         return stars
 
@@ -286,24 +294,33 @@ class TabelogSpider(CrawlSpider):
         selector = Selector(response)
 
         business = BusinessItem()
+        
         business['business_id'] = int(re.findall(r'[a-z]+/A\d{4}/A\d{6}/(\d+)/', response.url)[0])
-        business['name'] = selector.xpath("//span[@class='display-name']/text()")[0].extract().strip()
-        business['categories'] = selector.xpath("//span[@property='v:category']/text()").extract()
-
-        stars = selector.xpath("//span[@property='v:average']/text()")[0].extract().strip()
+        
+        if selector.xpath("//div[@class='rstinfo-table']/table/tbody/tr/td/text()"):
+            business['name'] = selector.xpath("//div[@class='rstinfo-table']/table/tbody/tr/td/text()")[0].extract().strip()
+        elif selector.xpath("//div[@class='rd-header__headline']/h2/a/text()"):
+            business['name'] = selector.xpath("//div[@class='rd-header__headline']/h2/a/text()")[0].extract().strip()
+        elif selector.xpath("//div[@class='rd-header__headline']/h2/small/text()"):
+            business['name'] = selector.xpath("//div[@class='rd-header__headline']/h2/small/text()")[0].extract().strip()
+        
+        #business['categories'] = selector.xpath("//div[@class='rd-header__info-wrapper']//p[@class='rd-header__linktree-parent']/a/span/text()").extract()
+        business['telephone'] = selector.xpath("//div[@class='rstinfo-table']//strong[@class='rstinfo-table__tel-num']/text()")[0].extract().strip()
+        stars = selector.xpath("//span[@class='rdheader-rating__score-val-dtl']/text()")[0].extract().strip()
         business['stars'] = convert_to_float_if_float(stars)
 
         for meal in ['dinner', 'lunch']:
-            price = selector.xpath("//dt[@class='budget-{0}']/following-sibling::dd/em/a/text()".format(meal)).extract()
+            price = selector.xpath("//p[@class='rdheader-budget__icon rdheader-budget__icon--{0}']/span/a/text()".format(meal)).extract()
             if price:
                 business['price_{0}'.format(meal)] = price[0]
-            stars = selector.xpath("//div[@class='score-s']/span[@class='{0}']/following-sibling::em/text()".format(meal))[0].extract()
-            business['stars_{0}'.format(meal)] = convert_to_float_if_float(stars)
+            #stars = selector.xpath("//div[@class='score-s']/span[@class='{0}']/following-sibling::em/text()".format(meal))[0].extract()
+            #stars = selector.xpath("//span[@class='rdheader-rating__score-val-dtl']/text()".format(meal))[0].extract()
+            #business['stars_{0}'.format(meal)] = convert_to_float_if_float(stars)
 
         review_count = selector.xpath("//em[@property='v:count']/text()")[0].extract()
         business['review_count'] = convert_to_int_if_int(review_count)
 
-        business['prefecture'] = selector.xpath("//p[@class='pref']/a/text()")[0].extract().strip()
+        business['prefecture'] = re.findall(r'([a-z]+)/A\d{4}/A\d{6}/\d+/', response.url)[0]
         business['area'] = re.findall(r'[a-z]+/(A\d{4})/A\d{6}/\d+/', response.url)[0]
         business['subarea'] = re.findall(r'[a-z]+/A\d{4}/(A\d{6})/\d+/', response.url)[0]
 

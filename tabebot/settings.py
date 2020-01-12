@@ -6,7 +6,7 @@
 #     http://doc.scrapy.org/topics/settings.html
 #
 
-BOT_NAME = 'tabebot'
+BOT_NAME = 'exbo'
 
 SPIDER_MODULES = ['tabebot.spiders']
 NEWSPIDER_MODULE = 'tabebot.spiders'
@@ -29,4 +29,4 @@ ITEM_PIPELINES = {
 }
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-USER_AGENT = 'tabebot (CHANGEME)'
+USER_AGENT = 'exbo'

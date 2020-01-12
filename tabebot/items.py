@@ -23,6 +23,7 @@ class ReviewItem(Item):
 class BusinessItem(Item):
     business_id = Field()
     name = Field()
+    telephone = Field()
     categories = Field()
     stars = Field()
     stars_dinner = Field()
