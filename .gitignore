@@ -1,5 +1,5 @@
 *.py[cod]
-
+*.json
 # C extensions
 *.so
 

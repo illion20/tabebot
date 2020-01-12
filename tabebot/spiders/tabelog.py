@@ -182,7 +182,7 @@ class TabelogSpider(CrawlSpider):
         # smp2 全文
 
         # Follow review list pagination and extract reviews
-        Rule(LxmlLinkExtractor(allow=(r'.com/[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/COND-0/smp1/\?.+',),
+        Rule(LxmlLinkExtractor(allow=(r'.com/[a-z]+/A\d{4}/A\d{6}/\d+/dtlrvwlst/COND-0/smp1/\?.+PG=.+',),
                                deny=(r'favorite_rvwr', r's.tabelog.com')),
              follow=True, callback='parse_reviews_and_users'),
     ]
@@ -304,8 +304,14 @@ class TabelogSpider(CrawlSpider):
         elif selector.xpath("//div[@class='rd-header__headline']/h2/small/text()"):
             business['name'] = selector.xpath("//div[@class='rd-header__headline']/h2/small/text()")[0].extract().strip()
         
-        #business['categories'] = selector.xpath("//div[@class='rd-header__info-wrapper']//p[@class='rd-header__linktree-parent']/a/span/text()").extract()
-        business['telephone'] = selector.xpath("//div[@class='rstinfo-table']//strong[@class='rstinfo-table__tel-num']/text()")[0].extract().strip()
+        cats = selector.xpath("//dd[@class='rdheader-subinfo__item-text']//a[starts-with(@href,'https://tabelog.com/rstLst/')]/span/text()")
+        categories = []
+        for category in cats:
+            categories.append(category.extract().strip())
+        business['categories'] = categories
+        telephone = selector.xpath("//div[@class='rstinfo-table']//strong[@class='rstinfo-table__tel-num']/text()")
+        if telephone:
+            business['telephone'] = telephone[0].extract().strip()
         stars = selector.xpath("//span[@class='rdheader-rating__score-val-dtl']/text()")[0].extract().strip()
         business['stars'] = convert_to_float_if_float(stars)
 
@@ -317,8 +323,9 @@ class TabelogSpider(CrawlSpider):
             #stars = selector.xpath("//span[@class='rdheader-rating__score-val-dtl']/text()".format(meal))[0].extract()
             #business['stars_{0}'.format(meal)] = convert_to_float_if_float(stars)
 
-        review_count = selector.xpath("//em[@property='v:count']/text()")[0].extract()
-        business['review_count'] = convert_to_int_if_int(review_count)
+        review_count = selector.xpath("//em[@property='v:count']/text()")
+        if review_count:
+            business['review_count'] = convert_to_int_if_int(review_count[0].extract())
 
         business['prefecture'] = re.findall(r'([a-z]+)/A\d{4}/A\d{6}/\d+/', response.url)[0]
         business['area'] = re.findall(r'[a-z]+/(A\d{4})/A\d{6}/\d+/', response.url)[0]
