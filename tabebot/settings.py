@@ -27,6 +27,7 @@ ITEM_PIPELINES = {
     'tabebot.pipelines.RemoveDuplicatesPipeline': 0,
     'tabebot.pipelines.MultiJsonLinesItemPipeline': 1,
 }
+
 LOG_LEVEL = 'ERROR'
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 USER_AGENT = 'exbo'
